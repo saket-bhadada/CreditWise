@@ -1,0 +1,28 @@
+# Data files (large datasets and raw files)
+*.zip
+*.dta
+*.csv
+ml_service/data/*.csv
+ml_service/data/*.zip
+ml_service/data/*.dta
+ml_service/saved_models/*.joblib
+
+# Node
+node_modules/
+dist/
+.npm/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
