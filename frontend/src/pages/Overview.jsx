@@ -1,209 +1,218 @@
-import React, { useEffect, useState } from "react";
-import { api } from "../api";
+import React from "react";
+import PageShell from "../components/layout/PageShell";
+import { Alert, Badge, Card, DataState, Kpi, SimpleTable } from "../components/ui";
+import { api } from "../api/client";
+import { useApi } from "../hooks/useApi";
+import { fmtFracPct, fmtInt, fmtStamp, humanize } from "../lib/format";
+import { FEATURE_LABELS } from "../lib/schema";
 
-export default function Overview() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+const FLOW = [
+  { title: "Data Sources", items: ["LendingClub (loans)", "FRED (economic)"] },
+  { title: "Preprocessing", items: ["Cleaning & imputation", "Feature engineering", "Time alignment"] },
+  { title: "ML Models", items: ["PD classification", "SHAP explainability"] },
+  { title: "Outputs", items: ["PD score & grade", "Expected credit loss", "Stress testing"] },
+];
 
-  useEffect(() => {
-    setLoading(true);
-    api
-      .getOverview()
-      .then((res) => {
-        setData(res);
-        setError(null);
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to load overview from backend.");
-      })
-      .finally(() => setLoading(false));
-  }, []);
+function Flow() {
+  return (
+    <div className="flow">
+      {FLOW.map((s, i) => (
+        <div key={s.title}>
+          <div className="flow-step">
+            <h3>{s.title}</h3>
+            <ul>
+              {s.items.map((it) => (
+                <li key={it}>{it}</li>
+              ))}
+            </ul>
+          </div>
+          {i < FLOW.length - 1 && (
+            <span className="flow-arrow" aria-hidden="true">
+              →
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  if (loading) {
-    return <div className="card">Loading System Overview...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="alert-box alert-danger">
-        <strong>Backend Connection Error:</strong> {error}. Ensure FastAPI (Port 8000) and Express Gateway (Port 5000) are running.
-      </div>
-    );
-  }
-
-  const stats = data.dataset_stats || {};
-  const splits = stats.splits || {};
+function OverviewBody({ data }) {
+  const s = data.dataset_stats;
+  const splits = s.splits || {};
   const catalog = data.features?.catalog || [];
+  const singleMonth = s.date_min && s.date_min === s.date_max;
+  const macroFlat = ["unemployment_rate", "fed_funds_rate", "inflation_rate"].every((k) => {
+    const b = data.feature_bounds?.[k];
+    return b && b.min === b.max;
+  });
+
+  const splitRows = [
+    { key: "train", name: "Train", share: "70%", ...splits.train },
+    { key: "validation", name: "Validation", share: "15%", ...splits.validation },
+    { key: "test", name: "Test (held-out)", share: "15%", ...splits.test },
+  ];
 
   return (
-    <div>
+    <>
       {!data.artifacts_loaded && (
-        <div className="alert-box alert-warning">
-          <strong>Model Status Notice:</strong> Serialized bundle{" "}
-          <code>saved_models/artifacts.joblib</code> has not been generated yet.
-          Run <code>python train_pipeline.py</code> in <code>ml_service/</code> to train all 8 models and serialize Joblib artifacts.
-        </div>
+        <Alert tone="warn" title="Model not trained yet.">
+          <code>saved_models/artifacts.joblib</code> does not exist, so the service is using its parametric fallback.
+          Run <code>python train_pipeline.py</code> in <code>ml_service/</code>.
+        </Alert>
+      )}
+      {singleMonth && (
+        <Alert tone="info" title="Training data covers a single origination month.">
+          All {fmtInt(s.total_rows)} loans were issued in {s.date_min}, so the chronological split below does not span
+          different time periods{macroFlat ? " and the macro features have no variation in training" : ""}. This is a
+          property of the supplied sample data, reported as-is by the backend.
+        </Alert>
       )}
 
-      <div className="grid-4" style={{ marginBottom: "18px" }}>
-        <div className="metric-box">
-          <div className="metric-label">Dataset Source &amp; Size</div>
-          <div className="metric-value">
-            {(stats.total_rows || 0).toLocaleString()} Loans
-          </div>
-          <div className="metric-sub">{stats.source_name}</div>
-        </div>
+      <h2 className="section-label">Key components</h2>
+      <Card className="mb" flat>
+        <Flow />
+      </Card>
 
-        <div className="metric-box warning">
-          <div className="metric-label">Historical Default Rate</div>
-          <div className="metric-value">
-            {((stats.default_rate || 0) * 100).toFixed(2)}%
+      <div className="grid cols-2">
+        <Card title="System status" sub="from GET /health + /api/overview">
+          <div className="status-list">
+            <div className="status-row">
+              <span>FastAPI ML service</span>
+              <Badge tone="green">Online</Badge>
+            </div>
+            <div className="status-row">
+              <span>Model bundle (artifacts.joblib)</span>
+              <Badge tone={data.artifacts_loaded ? "green" : "amber"}>
+                {data.artifacts_loaded ? "Loaded" : "Not trained"}
+              </Badge>
+            </div>
+            <div className="status-row">
+              <span>Trained</span>
+              <span className="mono" style={{ fontSize: 13 }}>
+                {fmtStamp(data.trained_timestamp)}
+              </span>
+            </div>
+            <div className="status-row">
+              <span>Active borrower-only model</span>
+              <strong>{data.active_borrower_model}</strong>
+            </div>
           </div>
-          <div className="metric-sub">
-            Period: {stats.date_min} to {stats.date_max}
-          </div>
-        </div>
+        </Card>
 
-        <div className="metric-box success">
-          <div className="metric-label">Active Combined Model</div>
-          <div className="metric-value">{data.active_combined_model}</div>
-          <div className="metric-sub">
-            Validation Threshold: {data.optimal_threshold}
+        <Card title="Model & training artifacts" sub={data.artifacts_loaded ? "Trained bundle" : "Fallback values"}>
+          <div className="grid cols-2" style={{ marginBottom: 0 }}>
+            <Kpi label="Dataset sample size" value={fmtInt(s.total_rows)} sub="Resolved loans" />
+            <Kpi label="Historical default rate" value={fmtFracPct(s.default_rate)} sub={s.source_name} tone="rust" />
+            <Kpi label="Active combined model" value={data.active_combined_model} sub={`Threshold: ${data.optimal_threshold}`} tone="green" text />
+            <Kpi
+              label="Macro features"
+              value={macroFlat ? "Constant in training" : "Varying"}
+              sub={macroFlat ? "Overlay applied at inference" : "Learned from data"}
+              tone="slate"
+              text
+            />
           </div>
-        </div>
-
-        <div className="metric-box">
-          <div className="metric-label">Artifact Bundle Status</div>
-          <div className="metric-value">
-            {data.artifacts_loaded ? "Joblib Loaded" : "Pre-Training"}
-          </div>
-          <div className="metric-sub">{data.trained_timestamp}</div>
-        </div>
+        </Card>
       </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-title">
-            Chronological Train / Validation / Test Split (Zero Time Leakage)
-          </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Partition</th>
-                <th>Split Share</th>
-                <th>Loan Count</th>
-                <th>Date Period (issue_d)</th>
-                <th>Default Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Train Set</strong></td>
-                <td>70%</td>
-                <td>{(splits.train?.rows || 0).toLocaleString()}</td>
-                <td>
-                  {splits.train?.date_start} &rarr; {splits.train?.date_end}
-                </td>
-                <td>{((splits.train?.default_rate || 0) * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td><strong>Validation Set</strong></td>
-                <td>15%</td>
-                <td>{(splits.validation?.rows || 0).toLocaleString()}</td>
-                <td>
-                  {splits.validation?.date_start} &rarr;{" "}
-                  {splits.validation?.date_end}
-                </td>
-                <td>
-                  {((splits.validation?.default_rate || 0) * 100).toFixed(2)}%
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Test Set (Held-Out)</strong></td>
-                <td>15%</td>
-                <td>{(splits.test?.rows || 0).toLocaleString()}</td>
-                <td>
-                  {splits.test?.date_start} &rarr; {splits.test?.date_end}
-                </td>
-                <td>{((splits.test?.default_rate || 0) * 100).toFixed(2)}%</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div className="grid split-6040">
+        <Card title="Chronological train / validation / test split" sub="No random shuffling">
+          <SimpleTable
+            caption="Dataset splits"
+            rowKey={(r) => r.key}
+            columns={[
+              { key: "name", header: "Partition", strong: true },
+              { key: "share", header: "Share" },
+              { key: "rows", header: "Loans", num: true, render: (r) => fmtInt(r.rows) },
+              { key: "period", header: "Period", render: (r) => `${r.date_start} → ${r.date_end}` },
+              { key: "dr", header: "Default rate", num: true, render: (r) => fmtFracPct(r.default_rate) },
+            ]}
+            rows={splitRows}
+          />
+        </Card>
 
-        <div className="card">
-          <div className="card-title">Quantitative System Methodology</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <Card title="Methodology">
+          <div className="stack" style={{ fontSize: 14.5, color: "var(--ink-2)" }}>
             <div>
-              <strong>1. Zero Post-Origination Leakage:</strong>{" "}
-              {data.methodology?.leakage_prevention}
+              <strong style={{ color: "var(--ink)" }}>Leakage prevention. </strong>
+              {data.methodology.leakage_prevention}
             </div>
             <div>
-              <strong>2. Time-Aware Partitioning:</strong>{" "}
-              {data.methodology?.chronological_splitting}
+              <strong style={{ color: "var(--ink)" }}>Time-aware splitting. </strong>
+              {data.methodology.chronological_splitting}
             </div>
             <div>
-              <strong>3. Expected Credit Loss Accounting:</strong>{" "}
-              <code>{data.methodology?.ecl_formula}</code>
+              <strong style={{ color: "var(--ink)" }}>ECL. </strong>
+              <code>{data.methodology.ecl_formula}</code>
             </div>
             <div>
-              <strong>4. Explainability Scope:</strong>{" "}
-              {data.methodology?.shap_disclaimer}
+              <strong style={{ color: "var(--ink)" }}>Explainability scope. </strong>
+              {data.methodology.shap_disclaimer}
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
-      <div className="card">
-        <div className="card-title">
-          Feature Dictionary &amp; Historical Training Bounds (Track A vs. Track B)
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Feature Name</th>
-              <th>Category</th>
-              <th>Data Type</th>
-              <th>Train Min</th>
-              <th>Train Median</th>
-              <th>Train Max</th>
-            </tr>
-          </thead>
-          <tbody>
-            {catalog.map((feat) => (
-              <tr key={feat.name}>
-                <td>
-                  <code>{feat.name}</code>
-                </td>
-                <td>
-                  <span
-                    className={`badge ${
-                      feat.category.includes("Macro")
-                        ? "badge-macro"
-                        : "badge-borrower"
-                    }`}
-                  >
-                    {feat.category}
-                  </span>
-                </td>
-                <td>{feat.type}</td>
-                <td>
-                  {feat.bounds?.min !== undefined ? feat.bounds.min : "N/A"}
-                </td>
-                <td>
-                  {feat.bounds?.median !== undefined
-                    ? feat.bounds.median
-                    : "Categorical"}
-                </td>
-                <td>
-                  {feat.bounds?.max !== undefined ? feat.bounds.max : "N/A"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Card title="Feature dictionary & training bounds" sub={`${catalog.length} features`} className="mb">
+        <SimpleTable
+          caption="Feature dictionary"
+          rowKey={(r) => r.name}
+          columns={[
+            {
+              key: "name",
+              header: "Feature",
+              render: (r) => (
+                <>
+                  <strong>{FEATURE_LABELS[r.name] || humanize(r.name)}</strong>{" "}
+                  <code>{r.name}</code>
+                </>
+              ),
+            },
+            {
+              key: "category",
+              header: "Category",
+              render: (r) => (
+                <Badge tone={r.category.includes("Macro") ? "slate" : "default"}>{r.category}</Badge>
+              ),
+            },
+            { key: "type", header: "Type" },
+            { key: "min", header: "Train min", num: true, render: (r) => r.bounds?.min ?? "—" },
+            { key: "median", header: "Median", num: true, render: (r) => r.bounds?.median ?? "—" },
+            { key: "max", header: "Train max", num: true, render: (r) => r.bounds?.max ?? "—" },
+          ]}
+          rows={catalog}
+        />
+      </Card>
+
+      <Card title="Risk grade bands" sub="PD → grade mapping from config.py">
+        <SimpleTable
+          caption="Risk bands"
+          rowKey={(r) => r.grade}
+          columns={[
+            { key: "grade", header: "Grade", strong: true },
+            { key: "label", header: "Tier" },
+            { key: "min", header: "PD from", num: true, render: (r) => fmtFracPct(r.min_pd, 0) },
+            { key: "max", header: "PD to", num: true, render: (r) => fmtFracPct(r.max_pd, 0) },
+          ]}
+          rows={data.risk_bands}
+        />
+      </Card>
+    </>
+  );
+}
+
+export default function Overview() {
+  const state = useApi((signal) => api.getOverview({ signal }), []);
+  return (
+    <PageShell
+      title="System Overview"
+      description="CreditWise is a machine-learning credit risk assessment system that combines borrower information with macroeconomic conditions to predict default risk, explain predictions and evaluate potential credit losses under economic scenarios."
+      note="Better data. Deeper insights. Smarter decisions."
+    >
+      <DataState state={state} onRetry={state.reload}>
+        {(data) => <OverviewBody data={data} />}
+      </DataState>
+    </PageShell>
   );
 }

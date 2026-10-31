@@ -1,0 +1,56 @@
+:root {
+  /* paper + ink */
+  --paper: #ebe6d9;
+  --paper-2: #e2dccb;
+  --card: #fcfbf7;
+  --card-2: #f6f3ea;
+  --ink: #181716;
+  --ink-2: #47443d;
+  --ink-3: #6f6a5f; /* 5.0:1 on --card, AA for body text */
+  --line: #e1dbcc;
+  --line-strong: #cfc8b6;
+
+  /* accents */
+  --rust: #bd4b2a; /* 5.1:1 on --card */
+  --rust-soft: #f6dccf;
+  --rust-line: #e9b9a4;
+  --green: #2c7a4b;
+  --green-soft: #dbeee1;
+  --amber: #a8651a;
+  --amber-soft: #f6e6c9;
+  --sticky: #f7f0b6;
+  --sticky-edge: #e8dd8f;
+  --tape: rgba(214, 205, 170, 0.72);
+
+  /* chart palette (colour-blind safe pairings: ink / rust / green / mustard / slate / sand) */
+  --c1: #1f1d1a;
+  --c2: #bd4b2a;
+  --c3: #4f8a5b;
+  --c4: #d9a441;
+  --c5: #6f8aa6;
+  --c6: #a39b8b;
+  --c7: #8c5a7a;
+  --c8: #3f7f86;
+
+  /* type */
+  --font-ui: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Drop a licensed Pearl Jean file at public/fonts/PearlJean.woff2 to use it (see base.css). */
+  --font-display: "Pearl Jean", "Fredoka Variable", "Fredoka", "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-hand: "Caveat", "Bradley Hand", cursive;
+
+  /* shape + depth */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --shadow-sm: 0 1px 2px rgba(40, 32, 15, 0.06), 0 1px 1px rgba(40, 32, 15, 0.04);
+  --shadow-md: 0 6px 18px rgba(40, 32, 15, 0.08), 0 1px 3px rgba(40, 32, 15, 0.06);
+  --shadow-hard: 3px 3px 0 var(--ink);
+
+  --nav-h: 64px;
+  --gutter: clamp(14px, 3vw, 40px);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* gentler than --ease-out: motion is spread across the duration instead of front-loaded */
+  --ease-glide: cubic-bezier(0.3, 0.55, 0.25, 1);
+}

@@ -1,72 +1,54 @@
-import React, { useState } from "react";
-import { DEFAULT_BORROWER_INPUTS } from "./api";
-import Overview from "./pages/Overview.jsx";
-import BorrowerRisk from "./pages/BorrowerRisk.jsx";
-import Explainability from "./pages/Explainability.jsx";
-import ECLPage from "./pages/ECLPage.jsx";
-import StressSimulator from "./pages/StressSimulator.jsx";
-import PortfolioPage from "./pages/PortfolioPage.jsx";
-import PerformancePage from "./pages/PerformancePage.jsx";
+import React, { Suspense, lazy, useEffect } from "react";
+import { PAGES, useHashRoute } from "./hooks/useHashRoute";
+import { BorrowerProvider } from "./state/BorrowerContext";
+import TopNav from "./components/layout/TopNav";
+import Home from "./pages/Home";
+import { LoadingBlock } from "./components/ui";
 
-const TABS = [
-  { id: "overview", label: "1. System Overview" },
-  { id: "borrower", label: "2. Borrower Risk Prediction" },
-  { id: "explainability", label: "3. SHAP Explainability" },
-  { id: "ecl", label: "4. Expected Credit Loss (ECL)" },
-  { id: "stress", label: "5. Macro Stress Simulator" },
-  { id: "portfolio", label: "6. Portfolio Analytics" },
-  { id: "performance", label: "7. Model Performance (Ablation)" },
-];
+const pageModules = {
+  overview: lazy(() => import("./pages/Overview")),
+  prediction: lazy(() => import("./pages/Prediction")),
+  shap: lazy(() => import("./pages/Shap")),
+  ecl: lazy(() => import("./pages/Ecl")),
+  stress: lazy(() => import("./pages/Stress")),
+  portfolio: lazy(() => import("./pages/Portfolio")),
+  performance: lazy(() => import("./pages/Performance")),
+};
+
+function Dashboard({ page }) {
+  const Page = pageModules[page];
+  useEffect(() => {
+    const title = PAGES.find((p) => p.id === page)?.title ?? "Dashboard";
+    document.title = `${title} · CreditWise`;
+    window.scrollTo({ top: 0 });
+  }, [page]);
+  return (
+    <>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <TopNav page={page} />
+      <Suspense
+        fallback={
+          <main className="page">
+            <div className="panel">
+              <LoadingBlock />
+            </div>
+          </main>
+        }
+      >
+        <Page />
+      </Suspense>
+    </>
+  );
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [borrowerInputs, setBorrowerInputs] = useState(DEFAULT_BORROWER_INPUTS);
-
+  const route = useHashRoute();
+  useEffect(() => {
+    if (route.name === "home") document.title = "CreditWise — Smarter Credit Decisions";
+  }, [route.name]);
   return (
-    <div>
-      <header className="app-header">
-        <h1>
-          CreditWise: Explainable Credit Risk Prediction &amp; Macroeconomic Stress Testing
-        </h1>
-        <p>
-          Quantitative Decision-Support System | PD Estimation &bull; SHAP Attribution &bull; Expected Credit Loss (ECL = PD &times; LGD &times; EAD) &bull; Macroeconomic Scenario Simulation
-        </p>
-      </header>
-
-      <nav className="nav-bar">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`nav-btn ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      <main className="main-container">
-        {activeTab === "overview" && <Overview />}
-        {activeTab === "borrower" && (
-          <BorrowerRisk
-            borrowerInputs={borrowerInputs}
-            setBorrowerInputs={setBorrowerInputs}
-            onNavigate={setActiveTab}
-          />
-        )}
-        {activeTab === "explainability" && (
-          <Explainability
-            borrowerInputs={borrowerInputs}
-            setBorrowerInputs={setBorrowerInputs}
-          />
-        )}
-        {activeTab === "ecl" && <ECLPage borrowerInputs={borrowerInputs} />}
-        {activeTab === "stress" && (
-          <StressSimulator borrowerInputs={borrowerInputs} />
-        )}
-        {activeTab === "portfolio" && <PortfolioPage />}
-        {activeTab === "performance" && <PerformancePage />}
-      </main>
-    </div>
+    <BorrowerProvider>{route.name === "home" ? <Home /> : <Dashboard page={route.page} />}</BorrowerProvider>
   );
 }
